@@ -6,7 +6,9 @@ import { TitleScreen } from "./ui/screens/TitleScreen";
 import { NewGameScreen } from "./ui/screens/NewGameScreen";
 import { GameScreen } from "./ui/screens/GameScreen";
 import { EndScreen } from "./ui/screens/EndScreen";
-import "./ui/theme.css";
+import "./ui/themes/theme.css";
+import "./ui/themes/family.css";
+import "./ui/themes/shell.css";
 
 type Screen = "title" | "intake" | "playing";
 

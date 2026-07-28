@@ -1,8 +1,10 @@
 import {
   REASSURE_COST,
   RECRUIT_COST,
+  activeCrew,
   coupThreat,
   crewCap,
+  playerRank,
   type Command,
   type Crew,
   type GameState,
@@ -20,15 +22,16 @@ export function CrewPanel({
   onToggle: (id: string) => void;
   dispatch: (c: Command) => void;
 }) {
-  const active = state.crew.filter((c) => c.status === "active");
-  const cap = crewCap(state.rank);
+  const rank = playerRank(state);
+  const active = activeCrew(state);
+  const cap = crewCap(rank);
   const done = Boolean(state.over);
 
   return (
     <Panel title="Your people" note={`${active.length} / ${cap}`}>
       <button
         onClick={() => dispatch({ type: "recruit" })}
-        disabled={done || active.length >= cap || state.money < RECRUIT_COST}
+        disabled={done || cap === 0 || active.length >= cap || state.money < RECRUIT_COST}
       >
         Take someone on · {money(RECRUIT_COST)}
       </button>
@@ -36,7 +39,7 @@ export function CrewPanel({
       {active.length === 0 ? (
         <p className="empty">
           {cap === 0
-            ? "You work alone. That's the only reason nobody can testify about you yet."
+            ? "You don't have men. You are one. Earn until somebody puts your name forward."
             : "Nobody left. Take someone on before the next earn."}
         </p>
       ) : (

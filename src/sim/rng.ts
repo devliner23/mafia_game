@@ -1,9 +1,11 @@
 /**
  * Deterministic seeded PRNG (mulberry32).
  *
- * The sim must never call Math.random(). Every stochastic decision goes
- * through here so that a seed plus a command list reproduces a run exactly.
- * The state is a plain number, so it serialises into the save file for free.
+ * The sim must never call Math.random(), and must never call crypto.randomUUID()
+ * either — the old world generator did, which quietly made saves unreplayable.
+ * Every stochastic decision goes through here so that a seed plus a command list
+ * reproduces a run exactly. The state is a plain number, so it serialises into
+ * the save file for free.
  */
 export class Rng {
   constructor(public state: number) {}
@@ -40,6 +42,18 @@ export class Rng {
   pick<T>(items: readonly T[]): T {
     if (items.length === 0) throw new Error("Rng.pick: empty array");
     return items[Math.floor(this.next() * items.length)]!;
+  }
+
+  /** Fisher–Yates on a copy. Used for dealing out family names and crews. */
+  shuffle<T>(items: readonly T[]): T[] {
+    const a = [...items];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = this.int(0, i);
+      const tmp = a[i]!;
+      a[i] = a[j]!;
+      a[j] = tmp;
+    }
+    return a;
   }
 
   /** Roughly normal, clamped. Used for rolling crew stats. */

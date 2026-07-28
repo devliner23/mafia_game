@@ -1,4 +1,4 @@
-import type { EvidenceTrack, Rank, Secret } from "./types";
+import type { EvidenceTrack, Rank, Secret, SituationKind } from "./types";
 
 /**
  * Commands are what the player asks for. They may be rejected.
@@ -8,6 +8,11 @@ export type Command =
   | { type: "recruit" }
   | { type: "promote"; crewId: string }
   | { type: "reassure"; crewId: string }
+  | { type: "kick_up" }
+  | { type: "make_a_move" }
+  | { type: "resolve"; optionId: string }
+  | { type: "seek_sitdown"; familyId: string }
+  | { type: "take_promotion" }
   | { type: "launder" }
   | { type: "cleanup" }
   | { type: "lay_low" }
@@ -18,6 +23,9 @@ export type Command =
  * Events are what actually happened. State is a fold over these, and the
  * street feed is a separate projection over the same stream — which is why
  * the feed can never drift out of sync with the simulation.
+ *
+ * Anything that happens to a person carries `familyId`, so the feed can tell
+ * the difference between your own crew and news from across town.
  */
 export type GameEvent =
   | { type: "week_began"; week: number }
@@ -27,20 +35,33 @@ export type GameEvent =
   | { type: "evidence_reduced"; track: EvidenceTrack; amount: number; how: string }
   | { type: "money_changed"; delta: number; reason: string }
   | { type: "crew_recruited"; crewId: string; name: string }
-  | { type: "crew_promoted"; crewId: string; to: Rank }
-  | { type: "crew_passed_over"; crewId: string; inFavourOf: string }
-  | { type: "loyalty_shifted"; crewId: string; delta: number; cause: string }
+  | { type: "crew_promoted"; crewId: string; familyId: string; to: Rank }
+  | { type: "crew_passed_over"; crewId: string; familyId: string; inFavourOf: string }
+  | { type: "crew_reassigned"; crewId: string; toSuperiorId: string }
+  | { type: "loyalty_shifted"; crewId: string; familyId: string; delta: number; cause: string }
   | { type: "crew_reassured"; crewId: string }
-  | { type: "secret_surfaced"; crewId: string; secret: Secret }
-  | { type: "crew_grumbled"; crewId: string; about: string }
-  | { type: "coup_attempted"; crewId: string; succeeded: boolean; }
-  | { type: "interacted"; crewId: string; action: string } 
-  | { type: "boss_killed"; succeeded: boolean;  by: string }
+  | { type: "kicked_up"; toId: string; amount: number }
+  | { type: "secret_surfaced"; crewId: string; familyId: string; secret: Secret }
+  | { type: "crew_grumbled"; crewId: string; familyId: string; about: string }
+  | { type: "coup_attempted"; crewId: string; targetId: string; familyId: string; succeeded: boolean }
+  | { type: "boss_killed"; familyId: string; victimId: string; by: string }
+  | { type: "seat_filled"; familyId: string; crewId: string; rank: Rank }
+  | { type: "promotion_offered"; rank: Rank; sponsorId: string }
   | { type: "indictment_filed"; weight: number }
-  | { type: "crew_arrested"; crewId: string }
-  | { type: "crew_flipped"; crewId: string; testimonialDump: number }
+  | { type: "crew_arrested"; crewId: string; familyId: string }
+  | { type: "crew_flipped"; crewId: string; familyId: string; testimonialDump: number }
   | { type: "player_promoted"; to: Rank }
-  | { type: "run_ended"; reason: "coup" | "indicted" | "retired" };
+  | { type: "run_ended"; reason: "coup" | "indicted" | "retired" }
+  // --- politics ---
+  | { type: "regard_shifted"; crewId: string; delta: number; reason: string }
+  | { type: "relation_shifted"; familyId: string; withFamilyId: string; value: number; reason: string }
+  | { type: "war_declared"; familyId: string; withFamilyId: string }
+  | { type: "peace_made"; familyId: string; withFamilyId: string }
+  | { type: "war_casualty"; familyId: string; crewId: string; byFamilyId: string }
+  | { type: "crew_killed"; crewId: string; how: string }
+  | { type: "betrayal_discovered"; crewId: string; about: string }
+  | { type: "situation_raised"; situationId: string; kind: SituationKind }
+  | { type: "situation_resolved"; kind: SituationKind; optionId: string; silent: boolean };
 
 export interface Step {
   events: GameEvent[];

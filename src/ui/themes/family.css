@@ -1,0 +1,120 @@
+/* ==========================================================================
+   EARNER — the chart
+
+   Extends theme.css. Same rule as everywhere else: mono for anything the state
+   could subpoena (seats, ranks, counts), sans for people's names.
+
+   The chart is drawn as one continuous vertical line with men hung off it,
+   because that is the only thing the player needs to understand about the
+   organisation: how many bodies are between him and the top.
+   ========================================================================== */
+
+.chart {
+  position: relative;
+  padding-left: 16px;
+}
+.chart::before {
+  content: "";
+  position: absolute;
+  left: 4px; top: 10px; bottom: 10px;
+  width: 1px;
+  background: linear-gradient(180deg, var(--edge-hi), var(--edge), transparent);
+}
+
+.rung {
+  position: relative;
+  display: grid;
+  grid-template-columns: 88px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+}
+.rung + .rung, .pair + .rung, .rung + .pair { margin-top: 4px; }
+.rung::before {
+  content: "";
+  position: absolute;
+  left: -12px; top: 50%;
+  width: 8px; height: 1px;
+  background: var(--edge-hi);
+}
+.rung .seat {
+  font: 9px var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--slate-500);
+}
+.rung .who { font: 14px var(--sans); color: var(--slate-300); }
+.rung button { padding: 6px 9px; font-size: 10px; }
+
+.rung.over {
+  border-color: rgba(251, 191, 36, 0.26);
+  background: rgba(251, 191, 36, 0.06);
+}
+.rung.over .seat { color: var(--amber); }
+
+.rung.you {
+  border-color: var(--ice);
+  background: var(--ice-d);
+}
+.rung.you .who { color: var(--slate-100); font-weight: 500; }
+.rung.you .seat { color: var(--ice); }
+
+/* Underboss and consigliere sit beside each other, not above each other. */
+.pair { display: grid; grid-template-columns: 1fr; gap: 4px; }
+
+.counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--edge);
+}
+.count .v { display: block; font: 500 18px var(--mono); color: var(--slate-100); }
+.count .k {
+  font: 9px var(--mono); letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--slate-500);
+}
+
+/* ---------- the city ---------- */
+.house {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 11px; border-radius: 9px;
+  border: 1px solid transparent;
+}
+.house:hover { background: var(--glass-lo); border-color: var(--edge); }
+.house .nm { font: 500 14px var(--sans); }
+.house .meta {
+  font: 9px var(--mono); letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--slate-500); margin-top: 3px;
+}
+.house .rep { font: 500 14px var(--mono); color: var(--slate-400); }
+.house.mine { border-color: var(--edge-hi); background: var(--glass-lo); }
+.house.mine .rep { color: var(--ice); }
+
+/* ---------- the offer ---------- */
+.offer {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 18px; flex-wrap: wrap;
+  margin-top: 14px; padding: 14px 18px;
+  border-radius: var(--r);
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  background: var(--ice-d);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+.offer b { display: block; font: 500 15px var(--sans); color: var(--slate-100); }
+.offer span { font: 13px/1.5 var(--sans); color: var(--slate-400); }
+
+.rung .row { gap: 6px; }
+button.move {
+  color: var(--rose);
+  border-color: rgba(251, 113, 133, 0.3);
+  background: var(--rose-d);
+}
+button.move:hover:not(:disabled) {
+  color: #ffd7dc;
+  border-color: rgba(251, 113, 133, 0.55);
+}

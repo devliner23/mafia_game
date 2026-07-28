@@ -1,4 +1,4 @@
-import type { GameState } from "../../sim";
+import { playerFamily, playerRank, type GameState } from "../../sim";
 import { Stat, money } from "../components/Bits";
 
 const CLOSING: Record<string, { head: string; line: string }> = {
@@ -18,8 +18,16 @@ const CLOSING: Record<string, { head: string; line: string }> = {
 
 export function EndScreen({ state, onAgain }: { state: GameState; onAgain: () => void }) {
   const reason = state.over?.reason ?? "indicted";
-  const c = CLOSING[reason]!;
-  const flipped = state.crew.filter((m) => m.status === "flipped").length;
+  const c =
+    state.over?.detail === "failed_move"
+      ? {
+          head: "You went at him",
+          line: "You counted the men behind you and got the number wrong. Everybody counts it after.",
+        }
+      : CLOSING[reason]!;
+  const fam = playerFamily(state);
+  const flipped = fam.members.filter((m) => m.status === "flipped").length;
+  const yours = fam.members.filter((m) => m.superiorId === "player").length;
 
   return (
     <div className="centre">
@@ -30,9 +38,10 @@ export function EndScreen({ state, onAgain }: { state: GameState; onAgain: () =>
         <div className="tally">
           <Stat k="name on the file" v={state.player.name} />
           <Stat k="weeks" v={String(state.over?.week ?? state.week)} />
-          <Stat k="rank reached" v={state.rank} />
+          <Stat k="rank reached" v={playerRank(state)} />
+          <Stat k="family" v={fam.name} />
           <Stat k="on hand" v={money(state.money)} />
-          <Stat k="men recruited" v={String(state.crew.length)} />
+          <Stat k="men under you" v={String(yours)} />
           <Stat k="men who talked" v={String(flipped)} />
         </div>
         <button className="primary" onClick={onAgain}>Start a new file</button>

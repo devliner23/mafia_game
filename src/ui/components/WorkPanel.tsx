@@ -1,4 +1,13 @@
-import { CONFIG, COOLING, rankIndex, type Command, type GameState } from "../../sim";
+import {
+  CONFIG,
+  COOLING,
+  TRIBUTE_PCT,
+  chainOfCommand,
+  playerRank,
+  rankIndex,
+  type Command,
+  type GameState,
+} from "../../sim";
 import { Panel, money } from "./Bits";
 
 export function WorkPanel({
@@ -11,9 +20,12 @@ export function WorkPanel({
   dispatch: (c: Command) => void;
 }) {
   const done = Boolean(state.over);
-  const jobs = CONFIG.jobs.filter((j) => rankIndex(state.rank) >= rankIndex(j.minRank));
+  const rank = playerRank(state);
+  const jobs = CONFIG.jobs.filter((j) => rankIndex(rank) >= rankIndex(j.minRank));
   // At associate you do the work yourself; above that you must delegate.
-  const needsCrew = state.rank !== "associate";
+  const needsCrew = rank !== "associate";
+  const superior = chainOfCommand(state)[0];
+  const tribute = Math.round(state.money * TRIBUTE_PCT);
 
   return (
     <>
@@ -42,6 +54,21 @@ export function WorkPanel({
         })}
       </Panel>
 
+      {superior && (
+        <Panel title="Kicking up" note={`to ${superior.name}`}>
+          <button
+            disabled={done || tribute < 500}
+            onClick={() => dispatch({ type: "kick_up" })}
+          >
+            Send {money(tribute)} up
+          </button>
+          <p className="hint">
+            Earning gets you money. Being seen to earn gets you standing, and standing is
+            what puts your name in the room when a seat opens.
+          </p>
+        </Panel>
+      )}
+
       <Panel title="Cool off" note="evidence does not decay on its own">
         <div className="row">
           <button
@@ -62,15 +89,6 @@ export function WorkPanel({
           supposed to cost you something.
         </p>
       </Panel>
-
-      <button
-        className="primary"
-        style={{ width: "100%", padding: 15, fontSize: 12 }}
-        disabled={done}
-        onClick={() => dispatch({ type: "end_week" })}
-      >
-        End week {state.week} →
-      </button>
     </>
   );
 }

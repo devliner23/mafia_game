@@ -1,5 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import { CONFIG, replay, type Command, type GameState, type NewGameOptions } from "./sim";
+import {
+  CONFIG,
+  replay,
+  type Command,
+  type GameState,
+  type NewGameOptions,
+} from "./sim";
+import { playerRank } from "./sim/selectors";
 
 /**
  * Because the sim is event-sourced and deterministic, a save file is just the
@@ -7,7 +14,7 @@ import { CONFIG, replay, type Command, type GameState, type NewGameOptions } fro
  * the exact state — no snapshot, no serialisation drift, and every save doubles
  * as a bug report you can step through.
  */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 /**
  * True only inside the Tauri webview. Lets `npm run dev` work in an ordinary
@@ -41,7 +48,11 @@ export async function saveGame(
     options,
     commands,
     savedAt: new Date().toISOString(),
-    summary: { week: state.week, rank: state.rank, over: state.over?.reason ?? null },
+    summary: {
+      week: state.week,
+      rank: playerRank(state),
+      over: state.over?.reason ?? null,
+    },
   };
   if (!isTauri()) throw new Error("Saving needs the Tauri app — run `npm run tauri dev`.");
   await invoke("save_game", { slot, data: JSON.stringify(file) });
@@ -84,6 +95,10 @@ function migrate(file: SaveFile): SaveFile {
   if (file.version > SAVE_VERSION) {
     throw new Error(`Save is from a newer version (${file.version}). Update the game.`);
   }
-  // case 0 -> 1: ...
+  if (file.version <= 1) {
+    // v1 seeds generated a different city, so replaying one would produce a
+    // different world with the same file name. Better to say so than to lie.
+    throw new Error("That file is from before the city existed. Start a new one.");
+  }
   return { ...file, version: SAVE_VERSION };
 }

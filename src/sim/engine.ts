@@ -1,13 +1,27 @@
 import type { Command, GameEvent, Step } from "./events";
+import { FIRST_NAMES, LAST_NAMES } from "./names";
 import { clamp, Rng } from "./rng";
 import {
   activeCrew,
+  chainOfCommand,
+  isActive,
+  me,
+  memberById,
+  playerFamily,
+  playerRank,
+  seatFilled,
+} from "./selectors";
+import {
+  backfillSeats,
   checkCoup,
+  crewCap,
+  kickUp,
   makeCrew,
+  moveOnSuperior,
   promote,
   resolveIndictment,
+  takePromotion,
   weeklyLoyaltyDrift,
-  simulateFamilyPolitics, // Ensure you export this from systems/crew.ts
 } from "./systems/crew";
 import {
   addEvidence,
@@ -15,16 +29,32 @@ import {
   caseProgress,
   checkIndictment,
   COOLING,
+  heatPressure,
   reduceEvidence,
   round1,
   weeklyDrift,
 } from "./systems/ledger";
 import {
+  raiseSituation,
+  resolveSituation,
+  silenceOption,
+} from "./systems/situations";
+import {
+  WAR,
+  playerBacking,
+  regardDrift,
+  relationBetween,
+  relationDrift,
+  shiftRegard,
+  shiftRelation,
+  warWeek,
+} from "./systems/relations";
+import { generateCity } from "./world";
+import {
   RANKS,
   rankIndex,
   type Background,
   type Crew,
-  type Family,
   type GameState,
   type Job,
   type NewGameOptions,
@@ -39,56 +69,34 @@ export interface SimConfig {
 
 export const RECRUIT_COST = 2000;
 export const REASSURE_COST = 1500;
+/** Share of what you're holding that goes up the chain when you kick up. */
+export const TRIBUTE_PCT = 0.25;
+/** What it costs to have the man above you removed. */
+export const MOVE_COST = 6000;
+/** What you put on the table to get another house to sit down. */
+export const SITDOWN_COST = 8000;
 
-/** Standing needed to reach each rank. */
+/**
+ * The political bar for each rung: how well your sponsor has to think of you,
+ * and how much of the house has to be behind you. This is the change that
+ * makes the climb a social problem rather than an accounting one.
+ */
+export const SUPPORT_NEEDED: Record<Rank, { sponsor: number; house: number }> = {
+  associate: { sponsor: -100, house: -100 },
+  soldier: { sponsor: 10, house: 0.5 },
+  capo: { sponsor: 25, house: 2 },
+  underboss: { sponsor: 40, house: 5 },
+  boss: { sponsor: 45, house: 8 },
+};
+
+/** Standing needed before anybody will put your name forward. */
 export const RANK_STANDING: Record<Rank, number> = {
   associate: 0,
   soldier: 40,
-  capo: 120,
-  underboss: 260,
-  boss: 460,
+  capo: 200,
+  underboss: 550,
+  boss: 1100,
 };
-
-// --- WORLD GENERATION DATA ---
-const FIRST_NAMES = ["Vincent", "Salvatore", "Anthony", "Giovanni", "Carmine", "Frank", "Dominic", "Vito", "Paulie", "Luca", "Rocco", "Eddie"];
-const FAMILY_NAMES = ["Gambino", "Genovese", "Lucchese", "Bonanno", "Profaci"];
-
-function pick<T>(rng: Rng, arr: readonly T[]): T {
-  return arr[rng.int(0, arr.length - 1)]!;
-}
-
-function shuffle<T>(rng: Rng, arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = rng.int(0, i);
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function makeMember(
-  rng: Rng,
-  familyId: string,
-  rank: Rank,
-  superiorId: string | null,
-  namePool: readonly string[],
-  isPlayer = false,
-  playerName?: string
-): Crew {
-  const id = isPlayer ? "player" : `m_${rng.int(1000, 9999)}${rng.int(1000, 9999)}`;
-  const name = isPlayer ? (playerName ?? "You") : pick(rng, namePool);
-  
-  const c = makeCrew(rng, id, name);
-  return {
-    ...c,
-    familyId,
-    superiorId,
-    rank,
-    // Scale stats for higher ranks so Bosses are actually dangerous
-    competence: isPlayer ? c.competence : clamp(c.competence + (rank === "boss" ? 30 : rank === "underboss" ? 20 : rank === "capo" ? 10 : 0), 0, 100),
-    knowledge: isPlayer ? c.knowledge : rank === "boss" ? 100 : clamp(c.knowledge + (rank === "underboss" ? 30 : rank === "capo" ? 15 : 0), 0, 100),
-  };
-}
 
 export function createGame(
   seed: string,
@@ -99,77 +107,33 @@ export function createGame(
   const bg =
     config.backgrounds.find((b) => b.id === options.background) ?? config.backgrounds[0]!;
 
-  // --- CITY & FAMILY GENERATION ---
-  const families: Family[] = [];
-  let player: Crew | undefined;
-  let playerFamilyId: string = "";
-
-  const numFamilies = rng.int(3, 5);
-  const chosenNames = shuffle(rng, [...FAMILY_NAMES]).slice(0, numFamilies);
-
-  for (let i = 0; i < numFamilies; i++) {
-    const familyId = `fam_${i}`;
-    const members: Crew[] = [];
-
-    const boss = makeMember(rng, familyId, "boss", null, config.names);
-    members.push(boss);
-    const underboss = makeMember(rng, familyId, "underboss", boss.id, config.names);
-    members.push(underboss);
-    
-    const numCapos = rng.int(2, 4);
-    for (let c = 0; c < numCapos; c++) {
-      const capo = makeMember(rng, familyId, "capo", underboss.id, config.names);
-      members.push(capo);
-      
-      const numSoldiers = rng.int(3, 6);
-      for (let s = 0; s < numSoldiers; s++) {
-        const soldier = makeMember(rng, familyId, "soldier", capo.id, config.names);
-        members.push(soldier);
-        
-        const numAssociates = rng.int(1, 4);
-        for (let a = 0; a < numAssociates; a++) {
-          const assoc = makeMember(rng, familyId, "associate", soldier.id, config.names);
-          members.push(assoc);
-        }
-      }
-    }
-
-    // Player starts in Family 0
-    if (i === 0) {
-      const soldiers = members.filter(m => m.rank === "soldier");
-      const mentor = pick(rng, soldiers);
-      player = makeMember(rng, familyId, "associate", mentor.id, config.names, true, options.name);
-      playerFamilyId = familyId;
-      members.push(player);
-    }
-
-    families.push({
-      id: familyId,
-      name: chosenNames[i]!,
-      bossId: boss.id,
-      members,
-      reputation: 50,
-      heat: 0,
-    });
-  }
+  const city = generateCity(rng, options);
 
   const state: GameState = {
-    // Player is now a proper Crew member object
-    player: { ...player!, background: bg.id }, 
-    families,
-    playerFamilyId,
+    player: { id: "player", name: options.name, background: bg.id },
     seed,
     week: 1,
-    rank: "associate",
     money: bg.money,
     ledger: { ...bg.ledger },
-    crew: [], // Player starts with NO direct crew
+    families: city.families,
+    playerFamilyId: city.playerFamilyId,
     standing: bg.standing,
     heatMemory: 0,
+    offer: null,
+    pending: null,
+    nextSituationId: 1,
+    lastRaised: {},
     over: null,
     rngState: 0,
     nextCrewId: 1,
   };
+
+  // Where you came from is a man, not a difficulty slider.
+  const player = me(state);
+  player.competence = clamp(player.competence + bg.stats.competence, 0, 100);
+  player.ambition = clamp(player.ambition + bg.stats.ambition, 0, 100);
+  player.discretion = clamp(player.discretion + bg.stats.discretion, 0, 100);
+
   state.rngState = rng.state;
   return state;
 }
@@ -179,11 +143,70 @@ const saveRng = (s: GameState, rng: Rng): void => {
   s.rngState = rng.state;
 };
 
+/** Who would put your name forward for the next rung. */
+function sponsorFor(state: GameState, next: Rank): Crew | undefined {
+  const fam = playerFamily(state);
+  const chain = chainOfCommand(state);
+  switch (next) {
+    case "soldier":
+      return chain.find((c) => c.rank === "capo") ?? chain[0];
+    case "capo":
+      return memberById(state, fam.underbossId) ?? memberById(state, fam.bossId);
+    case "underboss":
+      return memberById(state, fam.bossId);
+    case "boss":
+      return memberById(state, fam.consigliereId) ?? memberById(state, fam.underbossId);
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The climb. Standing gets your name said in the right room; the top two rungs
+ * additionally need the chair to be empty, because nobody is made underboss
+ * while there is a living underboss.
+ */
+function considerPromotion(state: GameState): GameEvent[] {
+  if (state.offer || state.over) return [];
+  const player = me(state);
+  const next = RANKS[rankIndex(player.rank) + 1];
+  if (!next) return [];
+  if (state.standing < RANK_STANDING[next]) return [];
+
+  const fam = playerFamily(state);
+  // The top seats are not vacancies you earn into. An underboss can be moved
+  // aside if you are far enough past the bar — and he will remember it — but
+  // nobody is handed a boss's chair while the boss is still sitting in it.
+  if (next === "underboss" && seatFilled(state, fam.underbossId)) {
+    const sitting = memberById(state, fam.underbossId);
+    const overwhelming =
+      state.standing >= RANK_STANDING.underboss + 150 &&
+      !!sitting &&
+      player.competence >= sitting.competence - 10;
+    if (!overwhelming) return [];
+  }
+  if (next === "boss" && seatFilled(state, fam.bossId)) return [];
+
+  const sponsor = sponsorFor(state, next);
+  if (!isActive(sponsor)) return [];
+
+  // Standing gets your name said. Politics decides whether anyone in the room
+  // agrees with it. A sponsor who doesn't rate you will not put his own name
+  // behind yours, and the higher the seat, the more of the house you need.
+  const needed = SUPPORT_NEEDED[next];
+  if (sponsor.regard < needed.sponsor) return [];
+  if (playerBacking(state) < needed.house) return [];
+
+  state.offer = { rank: next, sponsorId: sponsor.id, offeredWeek: state.week };
+  return [{ type: "promotion_offered", rank: next, sponsorId: sponsor.id }];
+}
+
 /** Mutating step. Used by the soak runner where allocation cost matters. */
 export function stepMutable(state: GameState, cmd: Command, config: SimConfig): Step {
   if (state.over) return { events: [], rejected: "run is over" };
   const rng = rngOf(state);
   const events: GameEvent[] = [];
+  const rank = playerRank(state);
   let rejected: string | undefined;
 
   switch (cmd.type) {
@@ -193,32 +216,38 @@ export function stepMutable(state: GameState, cmd: Command, config: SimConfig): 
         rejected = "no such job";
         break;
       }
-      if (rankIndex(state.rank) < rankIndex(job.minRank)) {
+      if (rankIndex(rank) < rankIndex(job.minRank)) {
         rejected = "rank too low";
         break;
       }
-      const team = state.crew.filter(
-        (c) => cmd.crewIds.includes(c.id) && c.status === "active",
-      );
-      const needed = state.rank === "associate" ? 0 : job.crewNeeded;
+      const team = activeCrew(state).filter((c) => cmd.crewIds.includes(c.id));
+      const needed = rank === "associate" ? 0 : job.crewNeeded;
       if (team.length < needed) {
         rejected = "not enough crew";
         break;
       }
 
+      const player = me(state);
       const skill =
         team.length > 0
           ? team.reduce((s, c) => s + c.competence, 0) / team.length
-          : 45 + rankIndex(state.rank) * 5;
+          : player.competence;
       const success = rng.chance(clamp(0.35 + (skill - job.difficulty) / 120, 0.08, 0.95));
 
       if (success) {
         const payout = Math.round(job.payout * (0.85 + rng.next() * 0.3));
         state.money += payout;
-        state.standing += Math.max(1, Math.round(job.payout / 2500));
+        // The balance surface. Standing has to outrun the cost of cooling off
+        // (lay_low is -2) or the ladder is mathematically unclimbable — which
+        // is exactly what the soak found at payout/2500.
+        state.standing += Math.max(1, Math.round(job.payout / 1200));
+        player.earnings += payout;
+        player.knowledge = clamp(player.knowledge + 1, 0, 100);
         for (const c of team) {
           c.earnings += Math.round(payout / Math.max(team.length, 1) / 4);
           c.knowledge = clamp(c.knowledge + 1.5, 0, 100);
+          // Men who eat because of you think better of you for it.
+          events.push(...shiftRegard(state, c.id, 2, "he ate this week"));
         }
         events.push({ type: "job_succeeded", jobId: job.id, crewIds: team.map((c) => c.id), payout });
         events.push({ type: "money_changed", delta: payout, reason: job.name });
@@ -232,31 +261,38 @@ export function stepMutable(state: GameState, cmd: Command, config: SimConfig): 
           ...addEvidence(state, track, round1(job.evidence[track] * mult), job.name),
         );
       }
+      playerFamily(state).heat = clamp(playerFamily(state).heat + 1, 0, 100);
       break;
     }
 
     case "recruit": {
-      // Associates and Soldiers cannot recruit
-      if (rankIndex(state.rank) < rankIndex("soldier")) {
-        rejected = "you must be a soldier to command associates";
+      if (rankIndex(rank) < rankIndex("soldier")) {
+        rejected = "associates don't have men — you are one";
         break;
       }
       if (state.money < RECRUIT_COST) {
         rejected = "cannot afford";
         break;
       }
-      if (activeCrew(state).length >= crewCap(state.rank)) {
-        rejected = "crew is full";
+      if (activeCrew(state).length >= crewCap(rank)) {
+        rejected = "you can't watch any more of them";
         break;
       }
       state.money -= RECRUIT_COST;
       const id = `c${state.nextCrewId++}`;
-      const name = config.names[rng.int(0, config.names.length - 1)] ?? `Associate ${id}`;
-      const c = makeCrew(rng, id, name);
-      // Assign them to the player's family and make the player their superior
-      c.familyId = state.playerFamilyId;
-      c.superiorId = "player";
-      state.crew.push(c);
+      const taken = new Set(playerFamily(state).members.map((m) => m.name));
+      let name = `${rng.pick(FIRST_NAMES)} ${rng.pick(LAST_NAMES)}`;
+      for (let i = 0; i < 20 && taken.has(name); i++) {
+        name = `${rng.pick(FIRST_NAMES)} ${rng.pick(LAST_NAMES)}`;
+      }
+      const c = makeCrew(rng, {
+        id,
+        name,
+        familyId: state.playerFamilyId,
+        superiorId: "player",
+        rank: "associate",
+      });
+      playerFamily(state).members.push(c);
       events.push({ type: "money_changed", delta: -RECRUIT_COST, reason: "recruiting" });
       events.push({ type: "crew_recruited", crewId: id, name });
       break;
@@ -264,20 +300,117 @@ export function stepMutable(state: GameState, cmd: Command, config: SimConfig): 
 
     case "promote":
       events.push(...promote(state, cmd.crewId));
-      if (events.length === 0) rejected = "cannot promote";
+      if (events.some((e) => e.type === "crew_promoted")) {
+        events.push(...shiftRegard(state, cmd.crewId, 25, "you moved him up"));
+      }
+      if (events.length === 0) rejected = "not yours to give";
       break;
 
+    case "take_promotion": {
+      if (!state.offer) {
+        rejected = "nothing on the table";
+        break;
+      }
+      events.push(...takePromotion(state));
+      break;
+    }
+
+    case "kick_up": {
+      const superior = chainOfCommand(state)[0];
+      if (!superior) {
+        rejected = "you answer to nobody";
+        break;
+      }
+      const amount = Math.round(state.money * TRIBUTE_PCT);
+      if (amount < 500) {
+        rejected = "not enough to send up";
+        break;
+      }
+      state.money -= amount;
+      state.standing += Math.max(1, Math.round(amount / 1800));
+      events.push({ type: "money_changed", delta: -amount, reason: "tribute" });
+      events.push(...kickUp(state, amount));
+      events.push(...shiftRegard(state, superior.id, Math.min(14, 4 + amount / 4000), "you kicked up"));
+      events.push(...shiftRegard(state, playerFamily(state).bossId, 2, "you earn"));
+      break;
+    }
+
+    case "resolve": {
+      if (!state.pending) {
+        rejected = "nobody is waiting on you";
+        break;
+      }
+      const valid = state.pending.options.some((o) => o.id === cmd.optionId);
+      if (!valid) {
+        rejected = "not one of the answers";
+        break;
+      }
+      events.push(...resolveSituation(state, cmd.optionId, rng));
+      break;
+    }
+
+    case "seek_sitdown": {
+      if (rankIndex(rank) < rankIndex("capo")) {
+        rejected = "a soldier does not call a sitdown";
+        break;
+      }
+      const fam = playerFamily(state);
+      const other = state.families.find((f) => f.id === cmd.familyId);
+      if (!other || other.id === fam.id) {
+        rejected = "no such house";
+        break;
+      }
+      if (state.money < SITDOWN_COST) {
+        rejected = "you don't come to that table empty-handed";
+        break;
+      }
+      state.money -= SITDOWN_COST;
+      events.push({ type: "money_changed", delta: -SITDOWN_COST, reason: "a sitdown" });
+      // Asking for peace works, and it costs you something at home.
+      const gain = relationBetween(fam, other.id) <= WAR ? 30 : 18;
+      events.push(...shiftRelation(state, fam.id, other.id, gain, "you asked for a sitdown"));
+      for (const m of playerFamily(state).members) {
+        if (m.status === "active" && !m.isPlayer && m.ambition > 60) {
+          events.push(...shiftRegard(state, m.id, -6, "you talked instead of moving"));
+        }
+      }
+      events.push(...shiftRegard(state, playerFamily(state).bossId, 12, "you brought quiet"));
+      break;
+    }
+
+    case "make_a_move": {
+      if (rankIndex(rank) < rankIndex("soldier")) {
+        rejected = "an associate who tries this is just a body";
+        break;
+      }
+      const target = chainOfCommand(state)[0];
+      if (!target) {
+        rejected = "there is nobody above you";
+        break;
+      }
+      if (state.money < MOVE_COST) {
+        rejected = "this kind of work has to be paid for";
+        break;
+      }
+      state.money -= MOVE_COST;
+      events.push({ type: "money_changed", delta: -MOVE_COST, reason: "the work" });
+      events.push(...moveOnSuperior(state, rng));
+      // Bodies are physical evidence, whichever way it goes.
+      events.push(...addEvidence(state, "physical", 12, "a body"));
+      playerFamily(state).heat = clamp(playerFamily(state).heat + 12, 0, 100);
+      break;
+    }
+
     case "reassure": {
-      // Look in player's crew first, then in the player's family for superiors
-      const family = state.families.find(f => f.id === state.playerFamilyId);
-      const c = state.crew.find((x) => x.id === cmd.crewId && x.status === "active") 
-             ?? family?.members.find((x) => x.id === cmd.crewId && x.status === "active");
-            
+      // Your own men, or the man above you. Both need feeding.
+      const c = playerFamily(state).members.find(
+        (x) => x.id === cmd.crewId && x.status === "active",
+      );
       if (!c) {
         rejected = "no such target";
         break;
       }
-      if (c.id === "player") {
+      if (c.isPlayer) {
         rejected = "cannot reassure yourself";
         break;
       }
@@ -287,9 +420,13 @@ export function stepMutable(state: GameState, cmd: Command, config: SimConfig): 
       }
       state.money -= REASSURE_COST;
       c.loyalty = clamp(c.loyalty + 9, 0, 100);
+      c.grudges = Math.max(0, c.grudges - (rng.chance(0.35) ? 1 : 0));
       c.weeksSinceReassured = 0;
       events.push({ type: "money_changed", delta: -REASSURE_COST, reason: "an envelope" });
       events.push({ type: "crew_reassured", crewId: c.id });
+      // Time spent on a man is the main thing that buys regard — and it travels
+      // to everyone tied to him, which is why who you sit with matters.
+      events.push(...shiftRegard(state, c.id, 14, "you came around"));
       break;
     }
 
@@ -326,7 +463,7 @@ export function stepMutable(state: GameState, cmd: Command, config: SimConfig): 
     }
 
     case "retire": {
-      if (state.rank !== "boss" || state.standing < RANK_STANDING.boss + 120) {
+      if (playerRank(state) !== "boss" || state.standing < RANK_STANDING.boss + 120) {
         rejected = "not yet";
         break;
       }
@@ -336,44 +473,49 @@ export function stepMutable(state: GameState, cmd: Command, config: SimConfig): 
     }
 
     case "end_week": {
+      // Silence is an answer. If they asked and you didn't reply, the last
+      // option on the list is the one you chose.
+      if (state.pending) {
+        events.push(...resolveSituation(state, silenceOption(), rng));
+      }
+
       events.push(...weeklyDrift(state, rng));
-      events.push(...weeklyLoyaltyDrift(state, rng));
-      
-      // Simulate the AI family politics (drift and coups among non-player family members)
-      events.push(...simulateFamilyPolitics(state, rng));
+      events.push(...regardDrift(state, rng));
+
+      // Every family in the city drifts and schemes, not just yours.
+      const pressure = heatPressure(state);
+      for (const fam of state.families) {
+        const local = fam.id === state.playerFamilyId ? pressure : fam.heat / 100;
+        events.push(...weeklyLoyaltyDrift(state, fam, local, rng));
+        events.push(...warWeek(state, fam, rng));
+        events.push(...checkCoup(state, fam, rng));
+        events.push(...backfillSeats(state, fam, rng));
+        fam.heat = clamp(round1(fam.heat - 0.5), 0, 100);
+      }
+      relationDrift(state);
+      if (state.over) {
+        // Somebody underneath you moved first.
+        break;
+      }
 
       const indicted = checkIndictment(state);
       if (indicted.length > 0) {
         events.push(...indicted);
         events.push(...resolveIndictment(state, rng));
-        if (activeCrew(state).length === 0 || caseProgress(state) > 1.6) {
+        if (caseProgress(state) > 1.6) {
           state.over = { reason: "indicted", week: state.week };
           events.push({ type: "run_ended", reason: "indicted" });
           break;
         }
       }
 
-      const coup = checkCoup(state, rng);
-      events.push(...coup);
-      const won = coup.find((e) => e.type === "coup_attempted" && e.succeeded);
-      if (won) {
-        state.over = { reason: "coup", week: state.week };
-        events.push({ type: "run_ended", reason: "coup" });
-        break;
-      }
-      for (const e of coup) {
-        if (e.type === "coup_attempted" && !e.succeeded) {
-          const c = state.crew.find((x) => x.id === e.crewId);
-          if (c) c.status = "dead";
-        }
+      events.push(...considerPromotion(state));
+      // Somebody wants an answer about something before next week.
+      if (rng.chance(state.pending ? 0 : 0.3)) {
+        events.push(...raiseSituation(state, rng));
       }
 
-      const nextRank = RANKS[rankIndex(state.rank) + 1];
-      if (nextRank && state.standing >= RANK_STANDING[nextRank]) {
-        state.rank = nextRank;
-        events.push({ type: "player_promoted", to: nextRank });
-      }
-
+      state.heatMemory = round1(Math.max(state.heatMemory * 0.92, pressure));
       state.week += 1;
       events.push({ type: "week_began", week: state.week });
       break;
@@ -396,10 +538,6 @@ export function step(
     ? { state: next, events: result.events, rejected: result.rejected }
     : { state: next, events: result.events };
 }
-
-// Associates have 0, Soldiers have 2, Capos have 5, Underboss 8, Boss 12
-export const crewCap = (rank: Rank): number =>
-  [0, 2, 5, 8, 12][rankIndex(rank)] ?? 0;
 
 /** Replay a command list from a seed. Same input, same output, always. */
 export function replay(

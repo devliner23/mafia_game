@@ -1,5 +1,6 @@
 import type { GameEvent } from "../events";
 import { clamp, type Rng } from "../rng";
+import { activeCrew, playerRank } from "../selectors";
 import { rankIndex, type EvidenceTrack, type GameState, type Ledger } from "../types";
 
 /**
@@ -27,7 +28,7 @@ export const caseWeight = (l: Ledger): number =>
 
 /** Indictment gets harder to trigger as you rise — you have more insulation. */
 export const indictmentThreshold = (s: GameState): number =>
-  220 + rankIndex(s.rank) * 60;
+  220 + rankIndex(playerRank(s)) * 60;
 
 export const caseProgress = (s: GameState): number =>
   caseWeight(s.ledger) / indictmentThreshold(s);
@@ -62,7 +63,7 @@ export function reduceEvidence(
  */
 export function weeklyDrift(state: GameState, rng: Rng): GameEvent[] {
   const events: GameEvent[] = [];
-  const active = state.crew.filter((c) => c.status === "active");
+  const active = activeCrew(state);
 
   let chatter = 0;
   for (const c of active) {

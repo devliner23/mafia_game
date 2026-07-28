@@ -4,9 +4,7 @@ import type { Background, Job } from "../types";
  * Content is bundled, not loaded, so `satisfies` gives us the same guarantee
  * Zod gave us at runtime — a malformed entry fails the build instead of the app.
  *
- * These numbers are the balance surface. The soak found that standing gain
- * (payout / 2500) is outrun by the cooling cost at high rank, which is why
- * almost nobody reaches boss. Tune here first, not in engine.ts.
+ * These numbers are the balance surface. Tune here first, not in engine.ts.
  */
 export const JOBS = [
   { id: "shakedown", name: "Shakedown", minRank: "associate", crewNeeded: 0, payout: 1800,
@@ -27,6 +25,7 @@ export const JOBS = [
     difficulty: 85, evidence: { physical: 3, financial: 22, testimonial: 10 } },
 ] satisfies Job[];
 
+/** Kept for save compatibility and for anything that wants a short name list. */
 export const NAMES: readonly string[] = [
   "Tommy Bracco", "Sal Vitale", "Ricky Manzo", "Joey Fusco", "Vinnie Corso",
   "Petey DeLuca", "Mikey Rossi", "Angelo Grieco", "Frankie Salerno", "Dom Ferraro",
@@ -47,6 +46,7 @@ export const BACKGROUNDS = [
     money: 3000,
     standing: 0,
     ledger: { physical: 0, financial: 0, testimonial: 0 },
+    stats: { competence: 4, ambition: 10, discretion: -6 },
   },
   {
     id: "union",
@@ -55,6 +55,7 @@ export const BACKGROUNDS = [
     money: 5000,
     standing: 18,
     ledger: { physical: 0, financial: 0, testimonial: 4 },
+    stats: { competence: 0, ambition: -4, discretion: 8 },
   },
   {
     id: "bookmaker",
@@ -63,6 +64,7 @@ export const BACKGROUNDS = [
     money: 11000,
     standing: 6,
     ledger: { physical: 0, financial: 14, testimonial: 0 },
+    stats: { competence: 6, ambition: 0, discretion: 2 },
   },
 ] satisfies Background[];
 
