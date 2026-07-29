@@ -110,10 +110,10 @@ export function createGame(
   const city = generateCity(rng, options);
 
   const state: GameState = {
-    player: { id: "player", name: options.name, background: bg.id },
+    player: { id: "player", name: options.name, origin: bg.id },
     seed,
     week: 1,
-    money: bg.money,
+    money: 1000,
     ledger: { ...bg.ledger },
     families: city.families,
     playerFamilyId: city.playerFamilyId,
@@ -126,6 +126,9 @@ export function createGame(
     over: null,
     rngState: 0,
     nextCrewId: 1,
+    eraId: 'mid_century',
+    houseId: "",
+    playerHeritage: "sicilian",
   };
 
   // Where you came from is a man, not a difficulty slider.

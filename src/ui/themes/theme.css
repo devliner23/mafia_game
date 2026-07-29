@@ -12,28 +12,29 @@
    ========================================================================== */
 
 :root {
-  --void:   #06090e;
-  --deep:   #0a0f16;
+  --void:   #02040a;
+  --deep:   #05080f;
+  --pit:    #010205;
 
-  --slate-800: #1e293b;
-  --slate-700: #334155;
-  --slate-500: #64748b;
-  --slate-400: #94a3b8;
-  --slate-300: #cbd5e1;
-  --slate-100: #e8eef6;
+  --slate-800: #16202f;
+  --slate-700: #26334a;
+  --slate-500: #5a6a80;
+  --slate-400: #8b9aad;
+  --slate-300: #c2ccd9;
+  --slate-100: #e6edf5;
 
-  /* Glass is built from slate at low alpha so it tints rather than greys. */
-  --glass:    rgba(148, 163, 184, 0.055);
-  --glass-hi: rgba(148, 163, 184, 0.10);
-  --glass-lo: rgba(148, 163, 184, 0.03);
-  --edge:     rgba(148, 163, 184, 0.14);
-  --edge-hi:  rgba(148, 163, 184, 0.28);
+  /* Thinner glass over a darker field reads as glass, not as grey paint. */
+  --glass:    rgba(150, 170, 200, 0.042);
+  --glass-hi: rgba(150, 170, 200, 0.085);
+  --glass-lo: rgba(150, 170, 200, 0.018);
+  --edge:     rgba(150, 170, 200, 0.10);
+  --edge-hi:  rgba(150, 170, 200, 0.22);
+  --sheen:    rgba(255, 255, 255, 0.05);
 
-  /* Muted, never neon. A single acid accent on near-black is the tell. */
   --ice:   #7dd3fc;
-  --ice-d: rgba(125, 211, 252, 0.13);
+  --ice-d: rgba(125, 211, 252, 0.11);
   --rose:  #fb7185;
-  --rose-d: rgba(251, 113, 133, 0.13);
+  --rose-d: rgba(251, 113, 133, 0.11);
   --amber: #fbbf24;
   --mint:  #6ee7b7;
 
@@ -41,7 +42,9 @@
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   --r: 14px;
-  --blur: blur(22px) saturate(150%);
+  --blur: blur(30px) saturate(180%);
+  --blur-lo: blur(14px) saturate(140%);
+  --scrim: rgba(1, 2, 5, 0.74);
 }
 
 * { box-sizing: border-box; }
@@ -60,10 +63,10 @@ body::before {
   content: "";
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(1100px 700px at 12% -8%,  rgba(56, 89, 148, 0.30), transparent 62%),
-    radial-gradient(900px 620px at 92% 4%,    rgba(76, 61, 122, 0.24), transparent 60%),
-    radial-gradient(1000px 800px at 50% 108%, rgba(30, 58, 92, 0.26), transparent 65%),
-    linear-gradient(180deg, var(--deep), var(--void));
+    radial-gradient(1100px 700px at 12% -8%,  rgba(46, 74, 126, 0.20), transparent 62%),
+    radial-gradient(900px 620px at 92% 4%,    rgba(60, 48, 100, 0.16), transparent 60%),
+    radial-gradient(1000px 800px at 50% 108%, rgba(22, 46, 76, 0.18), transparent 65%),
+    linear-gradient(180deg, var(--deep) 0%, var(--void) 55%, var(--pit) 100%);
 }
 
 /* ---------- controls ---------- */
@@ -119,14 +122,16 @@ input:focus {
 
 /* ---------- glass panel ---------- */
 .panel {
-  background: var(--glass);
+  position: relative;
+  background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
   border: 1px solid var(--edge);
   border-radius: var(--r);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    0 24px 48px -28px rgba(0, 0, 0, 0.9);
+    inset 0 1px 0 var(--sheen),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 30px 60px -32px rgba(0, 0, 0, 0.95);
   overflow: hidden;
 }
 .panel > h2 {
@@ -147,11 +152,12 @@ input:focus {
 .fileTop {
   display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
   padding: 16px 20px;
-  background: var(--glass);
+  background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
   border: 1px solid var(--edge);
   border-radius: var(--r);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
+  box-shadow: inset 0 1px 0 var(--sheen), 0 24px 48px -30px rgba(0, 0, 0, 0.9);
 }
 .fileTop .who { flex: 1; min-width: 180px; }
 .fileTop h1 { margin: 0; font: 500 21px/1.2 var(--sans); letter-spacing: -0.01em; }
@@ -381,3 +387,62 @@ input:focus {
 }
 
 
+/* ---------- the interruption ---------- */
+.scrim {
+  position: fixed; inset: 0; z-index: 900;
+  display: grid; place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--scrim);
+  backdrop-filter: var(--blur-lo);
+  -webkit-backdrop-filter: var(--blur-lo);
+  animation: scrimIn 0.16s ease-out;
+}
+@keyframes scrimIn { from { opacity: 0; } }
+
+.modal {
+  width: min(580px, 100%);
+  max-height: min(86vh, 940px);
+  display: flex; flex-direction: column;
+  border-radius: 18px;
+  border: 1px solid var(--edge-hi);
+  background: linear-gradient(180deg, rgba(22, 32, 48, 0.72), rgba(4, 7, 12, 0.88));
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow:
+    inset 0 1px 0 var(--sheen),
+    0 50px 100px -34px rgba(0, 0, 0, 1);
+  animation: modalIn 0.18s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+.modal:focus { outline: none; }
+.modal.good { border-color: rgba(125, 211, 252, 0.32); }
+.modal.bad  { border-color: rgba(251, 113, 133, 0.32); }
+
+.modal > header { padding: 22px 24px 15px; border-bottom: 1px solid var(--edge); }
+.modal > header .eyebrow { margin: 0 0 8px; }
+.modal > header h2 {
+  margin: 0; font: 500 24px/1.2 var(--sans); letter-spacing: -0.015em;
+  color: var(--slate-100);
+}
+.modal .modalBody { padding: 20px 24px; overflow-y: auto; }
+.modal .modalBody > * + * { margin-top: 18px; }
+.modal .modalBody::-webkit-scrollbar { width: 5px; }
+.modal .modalBody::-webkit-scrollbar-thumb { background: var(--edge-hi); border-radius: 3px; }
+.modal > footer {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 15px 24px; border-top: 1px solid var(--edge);
+  background: rgba(0, 0, 0, 0.22);
+}
+.modal > footer .waiting {
+  margin-right: auto; font: 10px var(--mono); letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--amber);
+}
+
+@media (max-width: 640px) {
+  .scrim { padding: 0; place-items: end stretch; }
+  .modal { width: 100%; max-height: 92vh; border-radius: 18px 18px 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrim, .modal { animation: none; }
+}

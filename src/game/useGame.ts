@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   CONFIG,
   createGame,
@@ -9,9 +9,18 @@ import {
   type Command,
   type Digest,
   type FeedLine,
+  type GameEvent,
   type GameState,
   type NewGameOptions,
 } from "../sim";
+
+/** Fired on window whenever the sim advances into a new week. */
+export const WEEK_EVENT = "earner:week";
+
+export interface WeekBegan {
+  week: number;
+  events: GameEvent[];
+}
 
 export interface Game {
   state: GameState;
@@ -41,7 +50,7 @@ export interface Game {
  * shows as a popup. Rejections don't — a rejected command didn't happen, so
  * there is nothing to report but the reason.
  */
-export function useGame(seed: string, options: NewGameOptions): Game {
+export function useGame(seed: string, options: NewGameOptions, onWeekBegan?: (w: WeekBegan) => void,): Game {
   const [liveSeed, setLiveSeed] = useState(seed);
   const [liveOptions, setLiveOptions] = useState(options);
   const [state, setState] = useState<GameState>(() => createGame(seed, CONFIG, options));
@@ -50,32 +59,50 @@ export function useGame(seed: string, options: NewGameOptions): Game {
   const [notice, setNotice] = useState<string | null>(null);
   const [digest, setDigest] = useState<Digest | null>(null);
 
+  const current = useRef<GameState>(state);
+  const week = useRef(onWeekBegan);
+  week.current = onWeekBegan;
+
   const dispatch = useCallback((cmd: Command) => {
-    setState((prev) => {
-      const result = step(prev, cmd, CONFIG);
-      if (result.rejected) {
-        setNotice(result.rejected);
-        return prev;
-      }
-      setNotice(null);
-      setCommands((c) => [...c, cmd]);
+    const prev = current.current;
+    const result = step(prev, cmd, CONFIG);
 
-      const lines = project(result.state, result.events);
-      if (lines.length > 0) {
-        setFeed((f) => [...[...lines].reverse(), ...f].slice(0, 250));
-      }
+    if (result.rejected) {
+      setNotice(result.rejected);
+      return;
+    }
 
-      const d = makeDigest(prev, result.state, result.events, cmd);
-      setDigest(isQuiet(d) ? null : d);
+    current.current = result.state;
+    setNotice(null);
+    setState(result.state);
+    setCommands((c) => [...c, cmd]);
 
-      return result.state;
-    });
+    const lines = project(result.state, result.events);
+    if (lines.length > 0) {
+      setFeed((f) => [...[...lines].reverse(), ...f].slice(0, 250));
+    }
+
+    const d = makeDigest(prev, result.state, result.events, cmd);
+    setDigest(isQuiet(d) ? null : d);
+
+    /**
+     * The turn of the week. The engine already emits week_began as the last
+     * thing it does on an accepted end_week, so this fires exactly once per
+     * week and never on a rejection, a restore, or a mid-week action.
+     */
+    const began = result.events.filter((e) => e.type === "week_began").pop();
+    if (began && began.type === "week_began") {
+      const payload: WeekBegan = { week: began.week, events: result.events };
+      week.current?.(payload);
+      window.dispatchEvent(new CustomEvent<WeekBegan>(WEEK_EVENT, { detail: payload }));
+    }
   }, []);
 
   const dismissDigest = useCallback(() => setDigest(null), []);
 
   const restore = useCallback(
     (r: { state: GameState; commands: Command[]; seed: string; options: NewGameOptions }) => {
+      current.current = r.state;
       setState(r.state);
       setCommands(r.commands);
       setLiveSeed(r.seed);

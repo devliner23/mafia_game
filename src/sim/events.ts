@@ -61,7 +61,20 @@ export type GameEvent =
   | { type: "crew_killed"; crewId: string; how: string }
   | { type: "betrayal_discovered"; crewId: string; about: string }
   | { type: "situation_raised"; situationId: string; kind: SituationKind }
-  | { type: "situation_resolved"; kind: SituationKind; optionId: string; silent: boolean };
+  | { type: "situation_resolved"; kind: SituationKind; optionId: string; silent: boolean }
+  /* ------------------------------------------------------------------ history
+   * Things that happened to the world rather than to you. They are ordinary
+   * events on the same stream, which is what lets the feed carry them and the
+   * digest count them without any special case.
+   */
+  | { type: "history_happened"; week: number; headline: string; detail: string; contested: boolean }
+  /** A dated event that was about a man you have already replaced. */
+  | { type: "history_missed"; week: number; headline: string }
+  | { type: "seat_emptied"; familyId: string; crewId: string; seat: "boss"; reason: string }
+  | { type: "house_split"; familyId: string; factionId: string }
+  | { type: "house_renamed"; familyId: string; from: string; to: string }
+  /** A racket stopped paying, or started. Repeal is the loud one. */
+  | { type: "racket_changed"; racket: string; open: boolean };
 
 export interface Step {
   events: GameEvent[];

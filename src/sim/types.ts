@@ -1,9 +1,20 @@
+import type { Origin } from "./history/eras";
+import type { Heritage } from "./history/people";
+import type { RacketId } from "./history/houses";
+
 export const RANKS = ["associate", "soldier", "capo", "underboss", "boss"] as const;
 export type Rank = (typeof RANKS)[number];
 
 export const rankIndex = (r: Rank): number => RANKS.indexOf(r);
 
-/** What a rank is called out loud. The consigliere is a title, not a rung. */
+/**
+ * What a rank is called out loud. The consigliere is a title, not a rung.
+ *
+ * These are the New York words. Chicago and Palermo call the same rungs
+ * different things, and those live on the Setting in history/eras.ts — read
+ * them from there for anything the player sees. This map stays as the neutral
+ * fallback for logs and internals.
+ */
 export const RANK_LABEL: Record<Rank, string> = {
   associate: "associate",
   soldier: "soldier",
@@ -20,12 +31,19 @@ export interface Ledger {
   testimonial: number;
 }
 
+/**
+ * `in_the_junk` is new, and it is era-shaped: the families banned narcotics and
+ * their soldiers dealt anyway, so it is a secret in exactly the years the ban
+ * existed. The era's secret weighting in history/people.ts decides how often it
+ * comes up.
+ */
 export type Secret =
   | "none"
   | "gambling_debts"
   | "talking_to_feds"
   | "skimming"
-  | "a_body_of_their_own";
+  | "a_body_of_their_own"
+  | "in_the_junk";
 
 export type CrewStatus = "active" | "arrested" | "flipped" | "dead";
 
@@ -86,14 +104,59 @@ export interface Crew {
   isPlayer: boolean;
   /** The week they were straightened out. Null while still an associate. */
   madeWeek: number | null;
+
+  /* ------------------------------------------------------------------ the man
+   * Everything below is filled by dress() in history/people.ts immediately
+   * after makeCrew, so a man generated in 1931 is a 1931 man. All optional:
+   * a Crew built without the second pass still satisfies the type, it just
+   * has no biography.
+   */
+
+  /** True for a documented person seated from the corpus, not invented. */
+  historical?: boolean;
+  /** Year of birth, derived from rank and date rather than authored. */
+  born?: number;
+  /** Seventy per cent of made men in 1930; under ten by 1976. */
+  bornAbroad?: boolean;
+  /** Display label: "Sicilian", "Irish", "Palermitano". */
+  ethnicity?: string;
+  /**
+   * Decides whether he can ever be initiated. In New York and Palermo this is
+   * a hard ceiling, and an associate who can never be made plays a materially
+   * different game from one who is waiting his turn.
+   */
+  heritage?: Heritage;
+  /** The legitimate work on paper. It is where the heat lands. */
+  front?: string;
+  /** "Korea", "the Pacific" — derived from birth year, never authored. */
+  service?: string | null;
+  /** 1-3 trait ids from history/people.ts. Every one of them moved a stat. */
+  traits?: string[];
+  /** Years spent as an associate. In the closed-books eras this is the story. */
+  waited?: number;
+  /** "44 · Sicilian, born there · a barber shop" — one line for the crew card. */
+  summary?: string;
 }
 
 export interface Family {
   id: string;
+  /** What it is called *this year*. Changes mid-run when history says so. */
   name: string;
+  /** Stable id in the corpus, which never changes even when the name does. */
+  houseId: string;
+  /** What it will be called by the end, if the run lasts. For the feed only. */
+  modernName: string;
   bossId: string;
   underbossId: string;
   consigliereId: string;
+  /**
+   * A real man sitting in the underboss chair doing the boss's public business.
+   * Null for every house that did not run that arrangement — which is all of
+   * them except the Genovese family after 1969.
+   */
+  frontBossId: string | null;
+  /** Set when history turns the house on itself. The id of the rebel faction. */
+  splitFactionId?: string | null;
   members: Crew[];
   reputation: number;
   heat: number;
@@ -103,24 +166,33 @@ export interface Family {
    * Kept symmetric through setRelation().
    */
   relations: Record<string, number>;
+  /** Why it stands there, where the era stated a reason. For the intake dossier. */
+  relationWhy: Record<string, string>;
+  /** Where it actually sat. Shown, never simulated. */
+  turf: string[];
+  /** What it lived on, intersected with what still paid that year. */
+  rackets: string[];
 }
 
-export type BackgroundId = "corner" | "union" | "bookmaker";
+/**
+ * Origins replaced backgrounds. They are era-scoped content now — "union hand"
+ * means something different in 1931 and 1985, and "off the boat" means nothing
+ * at all by 1990 — so the list lives in history/eras.ts rather than here.
+ */
+export type OriginId = string;
+
+/** @deprecated Kept so older imports still resolve. Use Origin. */
+export type Background = Origin;
+/** @deprecated Kept so older imports still resolve. Use OriginId. */
+export type BackgroundId = OriginId;
 
 export interface NewGameOptions {
   name: string;
-  background: BackgroundId;
-}
-
-export interface Background {
-  id: BackgroundId;
-  name: string;
-  blurb: string;
-  money: number;
-  standing: number;
-  ledger: Ledger;
-  /** Modifiers on the man you start as, so the pick reads as a person. */
-  stats: { competence: number; ambition: number; discretion: number };
+  eraId: string;
+  houseId: string;
+  origin: OriginId;
+  entryRank: Rank;
+  background: string;
 }
 
 /**
@@ -173,7 +245,7 @@ export interface Situation {
 
 export interface GameState {
   /** Identity only. Everything about the player as a person is in the roster. */
-  player: { id: "player"; name: string; background: BackgroundId };
+  player: { id: "player"; name: string; origin: OriginId };
   seed: string;
   week: number;
   money: number;
@@ -181,6 +253,20 @@ export interface GameState {
   /** Every family in the city, including the player's. The whole cast. */
   families: Family[];
   playerFamilyId: string;
+
+  /* ------------------------------------------------------------- the date
+   * Week 1 is the week of the era's opening date, so `week` plus `eraId` is a
+   * real calendar date and nothing else has to be stored to know when we are.
+   * Both are set once at intake and never written again.
+   */
+  eraId: string;
+  houseId: string;
+  /**
+   * Copied off the origin at intake. Decides whether the ladder has a top for
+   * this player, in the settings where initiation required the right parentage.
+   */
+  playerHeritage: Heritage;
+
   standing: number;
   heatMemory: number;
   offer: PromotionOffer | null;
@@ -204,7 +290,18 @@ export interface Job {
   name: string;
   minRank: Rank;
   crewNeeded: number;
+  /**
+   * Authored in 1985 dollars, always. The simulation holds one currency and
+   * one price level; the era conversion happens at the edge, in the UI, via
+   * moneyIn() in era.ts. Doing it the other way round means every balance
+   * number in the game has a year attached to it, and they start disagreeing.
+   */
   payout: number;
   difficulty: number;
   evidence: Ledger;
+  /**
+   * Which racket this is. Gated against what still paid that year — liquor
+   * stops appearing in the work list in the week of repeal, mid-run.
+   */
+  racket: RacketId;
 }
