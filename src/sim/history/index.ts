@@ -29,6 +29,11 @@ export * from "./eras";
 export * from "./houses";
 export * from "./people";
 
+
+// after the existing export * lines
+export { eraById, settingById, ORIGINS, originsForEra } from "./eras";
+export { houseById } from "./houses";
+export type { House, Reign, YM } from "./houses";
 /* ------------------------------------------------------------------- lookups */
 
 const ymOf = (iso: string): YM => {
@@ -51,7 +56,7 @@ export const houseExistsAt = (house: House, at: YM): boolean =>
  * man in front of him — the Genovese arrangement is not an edge case to be
  * flattened, it is the most interesting thing about that house.
  */
-export function bossAt(house: House, at: YM): { of_record?: Reign; front?: Reign } {
+export function bossAt(house: House, at: YM): { of_record?: Reign | undefined; front?: Reign | undefined } {
   const covers = (r: Reign): boolean => ymWithin(at, r.from, r.to);
   return {
     of_record: house.seats.find((r) => r.role === "boss" && covers(r)),
@@ -172,9 +177,9 @@ export interface Opening {
   house: House;
   /** House name on the opening date — not its modern name. */
   houseName: string;
-  boss: { of_record?: Reign; front?: Reign };
+  boss: { of_record?: Reign | undefined; front?: Reign | undefined };
   /** The documented change of leadership the player is walking towards. */
-  comingSuccession?: Reign;
+  comingSuccession?: Reign | undefined;
   law: LawRegime;
   origins: Origin[];
   /** Starting purse and standing in period money. */

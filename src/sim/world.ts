@@ -13,6 +13,7 @@ import {
   seatAt,
   settingById,
   ORIGINS,
+  Origin,
   type Era,
   type House,
   type Reign,
@@ -198,7 +199,7 @@ function buildFamily(rng: Rng, house: House, era: Era, at: YM, book: NameBook): 
       );
       // A man is not made before he is a man. If the roll gave him a birth year
       // that makes him too young for his rank, he is the one who came up fast.
-      if (year - soldier.born < 21) soldier.born = year - 21;
+      if (year - soldier.born! < 21) soldier.born = year - 21;
       members.push(soldier);
 
       if (!rng.chance(ASSOCIATE_CHANCE)) continue;
@@ -238,6 +239,7 @@ function buildFamily(rng: Rng, house: House, era: Era, at: YM, book: NameBook): 
     // to everyone, plus whatever it has been doing to itself.
     heat: Math.round(era.law.federalAttention / 6),
     relations: {},
+    relationWhy: {},
     turf: [...house.turf],
     rackets: [...house.rackets],
   };
@@ -352,7 +354,7 @@ function seatPlayer(rng: Rng, fam: Family, options: NewGameOptions, era: Era): v
   // he made at intake and it is the one that decides whether the ladder has a
   // top for him.
   const year = new Date(Date.parse(era.start)).getUTCFullYear();
-  const origin = ORIGINS.find((o) => o.id === options.origin);
+  const origin = ORIGINS.find((o: Origin) => o.id === options.origin);
   const facts = dress(rng, player, { era, year, rank, isPlayer: true });
   player.born = facts.born;
   player.bornAbroad = origin?.heritage === "sicilian" ? facts.bornAbroad : false;

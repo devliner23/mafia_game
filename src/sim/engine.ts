@@ -50,6 +50,7 @@ import {
   warWeek,
 } from "./systems/relations";
 import { generateCity } from "./world";
+import { originsForEra } from "./history";
 import {
   RANKS,
   rankIndex,
@@ -100,24 +101,33 @@ export const RANK_STANDING: Record<Rank, number> = {
 
 export function createGame(
   seed: string,
-  config: SimConfig,
   options: NewGameOptions,
 ): GameState {
-  const rng = Rng.fromSeed(seed);
-  const bg =
-    config.backgrounds.find((b) => b.id === options.background) ?? config.backgrounds[0]!;
+const rng = Rng.fromSeed(seed);
 
+  // The origin is real, era-scoped content. Resolve it from the corpus against
+  // the field the frontend actually sets (options.origin), scoped to the era,
+  // and fall back to the first origin the era permits rather than to a global
+  // default that may not be legal this year.
+  const eraOrigins = originsForEra(options.eraId);
+  const origin =
+    eraOrigins.find((o) => o.id === options.origin) ?? eraOrigins[0]!;
+
+  // generateCity → seatPlayer already dresses the player: it applies the
+  // origin's stats via dress() and sets heritage/ethnicity off the origin.
+  // We read those back rather than re-deriving, so the engine and the world
+  // generator can never disagree about who the player is.
   const city = generateCity(rng, options);
 
   const state: GameState = {
-    player: { id: "player", name: options.name, origin: bg.id },
+    player: { id: "player", name: options.name, origin: origin.id },
     seed,
     week: 1,
-    money: 1000,
-    ledger: { ...bg.ledger },
+    money: origin.purse,
+    ledger: { ...origin.ledger },
     families: city.families,
     playerFamilyId: city.playerFamilyId,
-    standing: bg.standing,
+    standing: origin.standing,
     heatMemory: 0,
     offer: null,
     pending: null,
@@ -126,16 +136,11 @@ export function createGame(
     over: null,
     rngState: 0,
     nextCrewId: 1,
-    eraId: 'mid_century',
-    houseId: "",
-    playerHeritage: "sicilian",
+    eraId: options.eraId,
+    houseId: options.houseId,
+    playerHeritage: origin.heritage,
+    crewRep: { [city.playerFamilyId]: origin.standing },
   };
-
-  // Where you came from is a man, not a difficulty slider.
-  const player = me(state);
-  player.competence = clamp(player.competence + bg.stats.competence, 0, 100);
-  player.ambition = clamp(player.ambition + bg.stats.ambition, 0, 100);
-  player.discretion = clamp(player.discretion + bg.stats.discretion, 0, 100);
 
   state.rngState = rng.state;
   return state;
@@ -169,12 +174,22 @@ function sponsorFor(state: GameState, next: Rank): Crew | undefined {
  * additionally need the chair to be empty, because nobody is made underboss
  * while there is a living underboss.
  */
+/** The family you have the most reputation with, and that number. */
+function topCrew(state: GameState): { familyId: string; rep: number } {
+  let best = { familyId: state.playerFamilyId, rep: state.crewRep[state.playerFamilyId] ?? 0 };
+  for (const [familyId, rep] of Object.entries(state.crewRep)) {
+    if (rep > best.rep) best = { familyId, rep };
+  }
+  return best;
+}
+
 function considerPromotion(state: GameState): GameEvent[] {
   if (state.offer || state.over) return [];
   const player = me(state);
   const next = RANKS[rankIndex(player.rank) + 1];
   if (!next) return [];
-  if (state.standing < RANK_STANDING[next]) return [];
+  const top = topCrew(state);
+  if (top.rep < RANK_STANDING[next]) return [];
 
   const fam = playerFamily(state);
   // The top seats are not vacancies you earn into. An underboss can be moved
@@ -243,7 +258,11 @@ export function stepMutable(state: GameState, cmd: Command, config: SimConfig): 
         // The balance surface. Standing has to outrun the cost of cooling off
         // (lay_low is -2) or the ladder is mathematically unclimbable — which
         // is exactly what the soak found at payout/2500.
-        state.standing += Math.max(1, Math.round(job.payout / 1200));
+        const gain = Math.max(1, Math.round(job.payout / 1200));
+        state.standing += gain;
+        // Reputation lands with the crew whose work this was, independently.
+        const forFam = job.familyId ?? state.playerFamilyId;
+        state.crewRep[forFam] = (state.crewRep[forFam] ?? 0) + gain;
         player.earnings += payout;
         player.knowledge = clamp(player.knowledge + 1, 0, 100);
         for (const c of team) {
@@ -549,7 +568,7 @@ export function replay(
   config: SimConfig,
   options: NewGameOptions,
 ): { state: GameState; events: GameEvent[] } {
-  const state = createGame(seed, config, options);
+  const state = createGame(seed, options);
   const events: GameEvent[] = [];
   for (const cmd of commands) {
     events.push(...stepMutable(state, cmd, config).events);

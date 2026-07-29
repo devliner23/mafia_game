@@ -192,7 +192,6 @@ export interface NewGameOptions {
   houseId: string;
   origin: OriginId;
   entryRank: Rank;
-  background: string;
 }
 
 /**
@@ -254,21 +253,13 @@ export interface GameState {
   families: Family[];
   playerFamilyId: string;
 
-  /* ------------------------------------------------------------- the date
-   * Week 1 is the week of the era's opening date, so `week` plus `eraId` is a
-   * real calendar date and nothing else has to be stored to know when we are.
-   * Both are set once at intake and never written again.
-   */
   eraId: string;
   houseId: string;
-  /**
-   * Copied off the origin at intake. Decides whether the ladder has a top for
-   * this player, in the settings where initiation required the right parentage.
-   */
   playerHeritage: Heritage;
 
   standing: number;
   heatMemory: number;
+  crewRep: Record<string, number>;
   offer: PromotionOffer | null;
   /** At most one open question at a time. The week cannot end under it. */
   pending: Situation | null;
@@ -304,4 +295,5 @@ export interface Job {
    * stops appearing in the work list in the week of repeal, mid-run.
    */
   racket: RacketId;
+  familyId: number | null;
 }

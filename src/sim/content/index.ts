@@ -1,4 +1,6 @@
 import type { Background, Job } from "../types";
+import { ORIGINS } from "../sim";
+
 
 /**
  * Content is bundled, not loaded, so `satisfies` gives us the same guarantee
@@ -71,5 +73,5 @@ export const BACKGROUNDS = [
 export const CONFIG = {
   jobs: JOBS as Job[],
   names: NAMES,
-  backgrounds: BACKGROUNDS as Background[],
+  backgrounds: ORIGINS,
 };
