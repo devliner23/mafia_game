@@ -53,7 +53,7 @@ export interface Game {
 export function useGame(seed: string, options: NewGameOptions, onWeekBegan?: (w: WeekBegan) => void,): Game {
   const [liveSeed, setLiveSeed] = useState(seed);
   const [liveOptions, setLiveOptions] = useState(options);
-  const [state, setState] = useState<GameState>(() => createGame(seed, CONFIG, options));
+  const [state, setState] = useState<GameState>(() => createGame(seed, options));
   const [commands, setCommands] = useState<Command[]>([]);
   const [feed, setFeed] = useState<FeedLine[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
