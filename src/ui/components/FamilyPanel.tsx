@@ -14,13 +14,23 @@ import {
 } from "../../sim";
 import { Panel, money } from "./Bits";
 
-
 const label = (c: Crew): string => (c.consigliere ? "consigliere" : c.rank);
+
+/** Plain-English gloss on a -100..100 standing between two houses. */
+function standing(v: number): string {
+  if (v <= -50) return "at war";
+  if (v <= -22) return "bad blood";
+  if (v < 15) return "business";
+  if (v < 45) return "friendly";
+  return "allied";
+}
 
 /**
  * The chart. Every organisation in this game is a line of men standing between
  * you and a chair, so the interface says so literally: the boss at the top, you
- * at the bottom, and the exact number of people in between.
+ * at the bottom, and the exact number of people in between. Below it, the rest
+ * of the city — every other house, who runs it, how big it is, and where it
+ * stands with yours.
  */
 export function FamilyPanel({
   state,
@@ -40,6 +50,9 @@ export function FamilyPanel({
   // Top of the house, then everyone between you and them, then you.
   const rungs: Crew[] = [...chain].reverse();
   const above = rungs.filter((c) => c.id !== boss?.id && c.id !== underboss?.id);
+
+  // Everyone else in the city — the other crews.
+  const others = state.families.filter((f) => f.id !== fam.id);
 
   return (
     <>
@@ -69,21 +82,29 @@ export function FamilyPanel({
         </div>
       </Panel>
 
-      <Panel title="The city" note={`${state.families.length} families`}>
-        {state.families.map((f) => {
-          const b = memberById(state, f.bossId);
-          return (
-            <div key={f.id} className={`house ${f.id === fam.id ? "mine" : ""}`}>
-              <div>
-                <div className="nm">{f.name}</div>
-                <div className="meta">
-                  {b ? b.name : "no boss"} · {f.members.filter((m) => m.status === "active").length} men
+      <Panel title="The other crews" note={`${others.length} in the city`}>
+        {others.length === 0 ? (
+          <div className="meta">Nobody else on the board.</div>
+        ) : (
+          others.map((f) => {
+            const b = memberById(state, f.bossId);
+            const men = f.members.filter((m) => m.status === "active").length;
+            const rel = fam.relations[f.id] ?? 0;
+            const why = fam.relationWhy?.[f.id];
+            return (
+              <div key={f.id} className="house">
+                <div>
+                  <div className="nm">{f.name}</div>
+                  <div className="meta">
+                    {b ? b.name : "no boss"} · {men} men · {standing(rel)}
+                  </div>
+                  {why && <div className="meta why">{why}</div>}
                 </div>
+                <span className="rep">{Math.round(f.reputation)}</span>
               </div>
-              <span className="rep">{Math.round(f.reputation)}</span>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </Panel>
     </>
   );

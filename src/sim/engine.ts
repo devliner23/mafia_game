@@ -50,11 +50,10 @@ import {
   warWeek,
 } from "./systems/relations";
 import { generateCity } from "./world";
-import { originsForEra } from "./history";
+import { originsForEra, Origin } from "./history";
 import {
   RANKS,
   rankIndex,
-  type Background,
   type Crew,
   type GameState,
   type Job,
@@ -65,7 +64,7 @@ import {
 export interface SimConfig {
   jobs: Job[];
   names: readonly string[];
-  backgrounds: Background[];
+  backgrounds: readonly Origin[];
 }
 
 export const RECRUIT_COST = 2000;

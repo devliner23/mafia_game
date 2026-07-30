@@ -72,12 +72,10 @@ body::before {
 /* ---------- controls ---------- */
 button {
   font: 500 11px/1 var(--mono);
-  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--slate-300);
   background: var(--glass);
   border: 1px solid var(--edge);
-  border-radius: 9px;
   padding: 9px 12px;
   cursor: pointer;
   backdrop-filter: var(--blur);
